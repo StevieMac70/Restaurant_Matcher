@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,38 +10,26 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { v4 as uuidv4 } from 'uuid';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
 import { RootStackParamList } from '../types';
+import { useAppContext } from '../contexts/AppContext';
 import { useLocation } from '../hooks/useLocation';
 import { createSession, joinSession, publishSessionCode } from '../services/sessionService';
 
 type Props = { navigation: StackNavigationProp<RootStackParamList, 'Welcome'> };
 
-const USER_KEY = '@restaurant_matcher_user';
-
-async function getOrCreateUserId(): Promise<string> {
-  const raw = await AsyncStorage.getItem(USER_KEY);
-  if (raw) {
-    const parsed = JSON.parse(raw);
-    return parsed.id as string;
-  }
-  const id = uuidv4();
-  return id;
-}
-
-async function saveUserId(id: string, name: string) {
-  await AsyncStorage.setItem(USER_KEY, JSON.stringify({ id, name }));
-}
+const NAME_KEY = '@restaurant_matcher_name';
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 export default function WelcomeScreen({ navigation }: Props) {
+  const { firebaseUid } = useAppContext();
   const [name, setName] = useState('');
   const [sessionCode, setSessionCode] = useState('');
   const [mode, setMode] = useState<'home' | 'create' | 'join'>('home');
@@ -51,28 +39,35 @@ export default function WelcomeScreen({ navigation }: Props) {
 
   const handleCreate = async () => {
     if (!name.trim()) {
-      Alert.alert('Name required', 'Please enter your name.');
+      Alert.alert('Name required', 'Please enter your name to continue.');
+      return;
+    }
+    if (!firebaseUid) {
+      Alert.alert('Not ready', 'Connecting to servers… please try again in a moment.');
       return;
     }
     if (!coordinates) {
-      Alert.alert('Location required', locationError ?? 'Could not get your location.');
+      Alert.alert(
+        'Location required',
+        locationError ?? 'Could not get your location. Check Location permissions in Settings.',
+      );
       return;
     }
 
     setLoading(true);
     try {
-      const userId = await getOrCreateUserId();
-      await saveUserId(userId, name.trim());
-
-      const session = await createSession(userId, name.trim(), {
+      await AsyncStorage.setItem(NAME_KEY, name.trim());
+      const session = await createSession(firebaseUid, name.trim(), {
         radius: 1600,
         location: coordinates,
       });
       await publishSessionCode(session.id, session.code);
-
-      navigation.navigate('Lobby', { sessionId: session.id, userId });
-    } catch (err) {
-      Alert.alert('Error', 'Could not create session. Check your Firebase config.');
+      navigation.navigate('Lobby', { sessionId: session.id, userId: firebaseUid });
+    } catch {
+      Alert.alert(
+        'Connection error',
+        'Could not create session. Check your internet connection and Firebase configuration.',
+      );
     } finally {
       setLoading(false);
     }
@@ -80,32 +75,39 @@ export default function WelcomeScreen({ navigation }: Props) {
 
   const handleJoin = async () => {
     if (!name.trim()) {
-      Alert.alert('Name required', 'Please enter your name.');
+      Alert.alert('Name required', 'Please enter your name to continue.');
       return;
     }
     if (!sessionCode.trim()) {
-      Alert.alert('Code required', 'Please enter the session code.');
+      Alert.alert('Code required', 'Please enter the 6-character session code.');
+      return;
+    }
+    if (!firebaseUid) {
+      Alert.alert('Not ready', 'Connecting to servers… please try again in a moment.');
       return;
     }
 
     setLoading(true);
     try {
-      const userId = await getOrCreateUserId();
-      await saveUserId(userId, name.trim());
-
-      const session = await joinSession(sessionCode.trim().toUpperCase(), userId, name.trim());
+      await AsyncStorage.setItem(NAME_KEY, name.trim());
+      const session = await joinSession(
+        sessionCode.trim().toUpperCase(),
+        firebaseUid,
+        name.trim(),
+      );
       if (!session) {
         Alert.alert('Not found', 'No session found with that code. Double-check and try again.');
         return;
       }
-
-      navigation.navigate('Lobby', { sessionId: session.id, userId });
-    } catch (err) {
-      Alert.alert('Error', 'Could not join session. Check the code and try again.');
+      navigation.navigate('Lobby', { sessionId: session.id, userId: firebaseUid });
+    } catch {
+      Alert.alert('Connection error', 'Could not join session. Check the code and try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  const isConnecting = !firebaseUid;
 
   return (
     <LinearGradient colors={['#FF6B35', '#FF8C5A', '#FFB347']} style={styles.gradient}>
@@ -124,7 +126,15 @@ export default function WelcomeScreen({ navigation }: Props) {
               <Text style={styles.tagline}>Swipe. Match. Eat together.</Text>
             </View>
 
-            {/* Card */}
+            {/* Connection indicator */}
+            {isConnecting && (
+              <View style={styles.connectingBanner}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.connectingText}>Connecting…</Text>
+              </View>
+            )}
+
+            {/* Main card */}
             <View style={styles.card}>
               {mode === 'home' && (
                 <>
@@ -132,11 +142,19 @@ export default function WelcomeScreen({ navigation }: Props) {
                   <Text style={styles.cardSubtitle}>
                     Create a session and invite friends, or join one with a code.
                   </Text>
-                  <TouchableOpacity style={styles.primaryBtn} onPress={() => setMode('create')}>
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, isConnecting && styles.btnDisabled]}
+                    onPress={() => setMode('create')}
+                    disabled={isConnecting}
+                  >
                     <Ionicons name="add-circle-outline" size={22} color="#fff" />
                     <Text style={styles.primaryBtnText}>Create Session</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.secondaryBtn} onPress={() => setMode('join')}>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, isConnecting && styles.btnDisabled]}
+                    onPress={() => setMode('join')}
+                    disabled={isConnecting}
+                  >
                     <Ionicons name="enter-outline" size={22} color="#FF6B35" />
                     <Text style={styles.secondaryBtnText}>Join with Code</Text>
                   </TouchableOpacity>
@@ -162,7 +180,8 @@ export default function WelcomeScreen({ navigation }: Props) {
                     placeholder="Enter your name"
                     placeholderTextColor="#bbb"
                     autoCapitalize="words"
-                    returnKeyType="next"
+                    returnKeyType={mode === 'create' ? 'done' : 'next'}
+                    maxLength={40}
                   />
 
                   {mode === 'join' && (
@@ -178,30 +197,29 @@ export default function WelcomeScreen({ navigation }: Props) {
                         autoCorrect={false}
                         maxLength={8}
                         returnKeyType="done"
+                        onSubmitEditing={handleJoin}
                       />
                     </>
                   )}
 
                   {mode === 'create' && locationLoading && (
-                    <View style={styles.locationRow}>
+                    <View style={styles.statusRow}>
                       <ActivityIndicator size="small" color="#FF6B35" />
-                      <Text style={styles.locationText}>Getting your location…</Text>
+                      <Text style={styles.statusText}>Getting your location…</Text>
                     </View>
                   )}
 
                   {mode === 'create' && coordinates && (
-                    <View style={styles.locationRow}>
+                    <View style={styles.statusRow}>
                       <Ionicons name="location" size={16} color="#2ECC71" />
-                      <Text style={[styles.locationText, { color: '#2ECC71' }]}>
-                        Location ready
-                      </Text>
+                      <Text style={[styles.statusText, { color: '#2ECC71' }]}>Location ready</Text>
                     </View>
                   )}
 
                   <TouchableOpacity
-                    style={[styles.primaryBtn, loading && styles.btnDisabled]}
+                    style={[styles.primaryBtn, (loading || isConnecting) && styles.btnDisabled]}
                     onPress={mode === 'create' ? handleCreate : handleJoin}
-                    disabled={loading}
+                    disabled={loading || isConnecting}
                   >
                     {loading ? (
                       <ActivityIndicator color="#fff" />
@@ -222,19 +240,28 @@ export default function WelcomeScreen({ navigation }: Props) {
               )}
             </View>
 
-            {/* Instructions */}
+            {/* How it works */}
             <View style={styles.steps}>
               {[
-                { icon: 'people-outline', text: 'Invite friends with a 6-char code' },
-                { icon: 'hand-left-outline', text: 'Swipe LEFT ✓ to like, RIGHT ✗ to skip' },
-                { icon: 'heart-outline', text: 'Match when everyone agrees!' },
-                { icon: 'calendar-outline', text: 'Book a time & add to calendar' },
+                { icon: 'people-outline', text: 'Invite friends with a 6-character code' },
+                { icon: 'hand-left-outline', text: 'Swipe LEFT ✓ to like · RIGHT ✗ to skip' },
+                { icon: 'heart-outline', text: 'Match when everyone votes YES!' },
+                { icon: 'calendar-outline', text: 'Book a time · Add to your calendar' },
               ].map((s, i) => (
                 <View key={i} style={styles.step}>
                   <Ionicons name={s.icon as any} size={20} color="rgba(255,255,255,0.9)" />
                   <Text style={styles.stepText}>{s.text}</Text>
                 </View>
               ))}
+            </View>
+
+            {/* Footer links */}
+            <View style={styles.footer}>
+              <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
+                <Text style={styles.footerLink}>Privacy Policy</Text>
+              </TouchableOpacity>
+              <Text style={styles.footerDot}>·</Text>
+              <Text style={styles.footerVersion}>v{APP_VERSION}</Text>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -251,7 +278,7 @@ const styles = StyleSheet.create({
   logoSection: {
     alignItems: 'center',
     marginTop: 20,
-    marginBottom: 32,
+    marginBottom: 28,
   },
   iconCircle: {
     width: 96,
@@ -278,6 +305,21 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
     marginTop: 6,
     fontWeight: '500',
+  },
+  connectingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderRadius: 12,
+    paddingVertical: 8,
+    marginBottom: 16,
+  },
+  connectingText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   card: {
     backgroundColor: '#fff',
@@ -336,13 +378,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     marginTop: 8,
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  btnDisabled: { opacity: 0.6 },
-  primaryBtnText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-  },
+  btnDisabled: { opacity: 0.5, elevation: 0, shadowOpacity: 0 },
+  primaryBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
   secondaryBtn: {
     flexDirection: 'row',
     borderWidth: 2,
@@ -354,46 +397,47 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 12,
   },
-  secondaryBtnText: {
-    color: '#FF6B35',
-    fontSize: 17,
-    fontWeight: '700',
-  },
+  secondaryBtnText: { color: '#FF6B35', fontSize: 17, fontWeight: '700' },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginBottom: 16,
   },
-  backBtnText: {
-    color: '#FF6B35',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  locationRow: {
+  backBtnText: { color: '#FF6B35', fontWeight: '600', fontSize: 15 },
+  statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 12,
   },
-  locationText: {
-    fontSize: 14,
-    color: '#999',
-    fontWeight: '500',
-  },
-  steps: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  step: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  statusText: { fontSize: 14, color: '#999', fontWeight: '500' },
+  steps: { gap: 12, marginBottom: 24 },
+  step: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepText: {
     color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
     fontWeight: '500',
     flex: 1,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  footerLink: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  footerDot: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+  },
+  footerVersion: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
   },
 });

@@ -6,7 +6,13 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "deploy:rules": "firebase deploy --only firestore:rules",
+    "build:ios": "eas build --platform ios --profile production",
+    "build:android": "eas build --platform android --profile production",
+    "build:preview": "eas build --platform all --profile preview",
+    "submit:ios": "eas submit --platform ios",
+    "submit:android": "eas submit --platform android"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",
@@ -22,6 +28,7 @@
     "expo-location": "~16.5.5",
     "expo-splash-screen": "~0.26.4",
     "expo-status-bar": "~1.11.1",
+    "expo-updates": "~0.24.11",
     "firebase": "^10.7.1",
     "react": "18.2.0",
     "react-native": "0.73.4",
@@ -29,13 +36,11 @@
     "react-native-maps": "1.10.0",
     "react-native-reanimated": "~3.6.2",
     "react-native-safe-area-context": "4.8.2",
-    "react-native-screens": "~3.29.0",
-    "uuid": "^9.0.0"
+    "react-native-screens": "~3.29.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@types/react": "~18.2.45",
-    "@types/uuid": "^9.0.7",
     "typescript": "^5.1.3"
   },
   "private": true

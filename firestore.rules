@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Session code lookup (write-once, public-read) ─────────────────────
+    match /sessionCodes/{code} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['sessionId'])
+        && request.resource.data.sessionId is string;
+      allow update, delete: if false;
+    }
+
+    // ── Sessions ──────────────────────────────────────────────────────────
+    match /sessions/{sessionId} {
+      // Any authenticated user can read (needed to join and subscribe)
+      allow read: if request.auth != null;
+
+      // Only the host (creator) can create a session
+      allow create: if request.auth != null
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.status == 'lobby'
+        && request.resource.data.createdAt is int;
+
+      // Participants can update within reasonable scope
+      allow update: if request.auth != null
+        && isParticipant(resource.data, request.auth.uid)
+        && noTampering();
+
+      allow delete: if false;
+    }
+
+    // ── Helper functions ─────────────────────────────────────────────────
+    function isParticipant(data, uid) {
+      return uid in data.participants || uid == data.hostId;
+    }
+
+    // Prevent clients from modifying immutable fields
+    function noTampering() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['hostId', 'code', 'createdAt']);
+    }
+  }
+}

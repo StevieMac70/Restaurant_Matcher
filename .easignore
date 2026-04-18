@@ -1,0 +1,6 @@
+# Files excluded from EAS Build uploads
+.env
+.env.local
+google-play-service-account.json
+*.keystore
+node_modules

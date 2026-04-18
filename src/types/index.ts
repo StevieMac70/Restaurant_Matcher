@@ -83,4 +83,5 @@ export type RootStackParamList = {
   Swipe: { sessionId: string; userId: string };
   Match: { sessionId: string; userId: string; matchedPlaceId: string };
   MapView: { restaurant: Restaurant };
+  PrivacyPolicy: undefined;
 };

@@ -8,6 +8,7 @@ import LobbyScreen from '../screens/LobbyScreen';
 import SwipeScreen from '../screens/SwipeScreen';
 import MatchScreen from '../screens/MatchScreen';
 import MapViewScreen from '../screens/MapViewScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -21,12 +22,13 @@ export default function AppNavigator() {
           headerTintColor: '#fff',
           headerTitleStyle: { fontWeight: 'bold' },
           headerBackTitleVisible: false,
+          cardStyle: { backgroundColor: '#F7F7F7' },
         }}
       >
         <Stack.Screen
           name="Welcome"
           component={WelcomeScreen}
-          options={{ title: 'Restaurant Matcher', headerShown: false }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="Lobby"
@@ -36,7 +38,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Swipe"
           component={SwipeScreen}
-          options={{ title: 'Find a Restaurant', headerLeft: () => null }}
+          options={{ title: 'Find a Restaurant', headerLeft: () => null, gestureEnabled: false }}
         />
         <Stack.Screen
           name="Match"
@@ -47,6 +49,11 @@ export default function AppNavigator() {
           name="MapView"
           component={MapViewScreen}
           options={{ title: 'Restaurant Location' }}
+        />
+        <Stack.Screen
+          name="PrivacyPolicy"
+          component={PrivacyPolicyScreen}
+          options={{ title: 'Privacy Policy' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

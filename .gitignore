@@ -1,0 +1,17 @@
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Local secrets — never commit these
+.env
+.env.local
+google-play-service-account.json
+*.keystore
+*.p12
+*.mobileprovision
+AuthKey_*.p8
+
+# OS files
+.DS_Store
+Thumbs.db
